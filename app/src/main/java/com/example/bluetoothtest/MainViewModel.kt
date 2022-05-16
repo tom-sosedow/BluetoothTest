@@ -10,6 +10,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import java.io.IOException
 import java.util.*
@@ -24,6 +26,9 @@ class MainViewModel : ViewModel() {
     private val _textState = mutableStateOf("")
     val textState : State<String> = _textState
 
+    private val _eventFlow = MutableSharedFlow<UiEvent>()
+    val eventFlow = _eventFlow.asSharedFlow()
+
     private lateinit var clientSocket: BluetoothSocket
     private lateinit var serverSocket: BluetoothServerSocket
 
@@ -37,6 +42,9 @@ class MainViewModel : ViewModel() {
 
     fun clear() {
         _state.value = emptyList()
+        viewModelScope.launch {
+            _eventFlow.emit(UiEvent.showSnackBar("Cleared"))
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -44,6 +52,8 @@ class MainViewModel : ViewModel() {
         clientSocket = device.createRfcommSocketToServiceRecord(UUID(1L, 2L))
         viewModelScope.launch(Dispatchers.IO) {
             clientSocket.connect()
+            _eventFlow.emit(UiEvent.showSnackBar("Connected to Server"))
+            readFromServer()
         }
     }
 
@@ -54,6 +64,7 @@ class MainViewModel : ViewModel() {
             try {
                 clientSocket = serverSocket.accept()
                 serverSocket.close()
+                _eventFlow.emit(UiEvent.showSnackBar("Started Server"))
             } catch (e: IOException) {
                 e.printStackTrace()
             }
@@ -62,6 +73,7 @@ class MainViewModel : ViewModel() {
 
     fun readFromServer() {
         viewModelScope.launch(Dispatchers.IO) {
+            _eventFlow.emit(UiEvent.showSnackBar("Waiting for Message from Server"))
             try {
                 var inputStream= clientSocket.inputStream
                 while (inputStream.available() == 0) {
@@ -72,7 +84,6 @@ class MainViewModel : ViewModel() {
                 inputStream.read(bytes, 0, available)
                 val string = String(bytes)
                 _textState.value = string
-                inputStream.close()
             } catch (e: IOException) {
                 e.printStackTrace()
             }
@@ -83,8 +94,11 @@ class MainViewModel : ViewModel() {
         viewModelScope.launch(Dispatchers.IO) {
             val outputStream = clientSocket.outputStream
             outputStream.write(message.toByteArray())
-            outputStream.close()
-            _textState.value = "Sent message"
+            _eventFlow.emit(UiEvent.showSnackBar("Sent message to client"))
         }
+    }
+
+    sealed class UiEvent {
+        data class showSnackBar(val message: String): UiEvent()
     }
 }

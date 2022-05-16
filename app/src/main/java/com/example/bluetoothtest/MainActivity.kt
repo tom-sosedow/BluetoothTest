@@ -33,6 +33,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import com.example.bluetoothtest.ui.theme.BluetoothTestTheme
+import kotlinx.coroutines.flow.collectLatest
 
 class MainActivity : ComponentActivity() {
     private val vm by viewModels<MainViewModel>()
@@ -84,6 +85,13 @@ class MainActivity : ComponentActivity() {
             val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
             launcher.launch(enableBtIntent)
         }
+        val enableDiscoverableLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if(result.resultCode == Activity.RESULT_OK) {
+                val data = result.data
+            }
+        }
+        val enableDiscoverableIntent = Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
+
 
         val filter = IntentFilter(BluetoothDevice.ACTION_FOUND)
         registerReceiver(receiver, filter)
@@ -93,12 +101,25 @@ class MainActivity : ComponentActivity() {
                 var searchStatus by remember { mutableStateOf(false) }
                 var isDropdownMenuOpen by remember { mutableStateOf(false)}
                 var isDialogOpen by remember { mutableStateOf(false)}
+                val scaffoldState = rememberScaffoldState()
 
                 InputDialog(isOpen = isDialogOpen, title = "Input Text", isTwoLined = false, firstLabel = "Message", onDismissRequest = { isDialogOpen = false }){ a, _ ->
                     vm.sendAsServer(a)
+                    isDialogOpen = false
+                }
+
+                LaunchedEffect(key1 = Unit) {
+                    vm.eventFlow.collectLatest { event ->
+                        when(event) {
+                            is MainViewModel.UiEvent.showSnackBar -> {
+                                scaffoldState.snackbarHostState.showSnackbar(event.message)
+                            }
+                        }
+                    }
                 }
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
+                    scaffoldState = scaffoldState,
                     topBar = {
                              Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                                  IconButton(onClick = { isDropdownMenuOpen = true }) {
@@ -107,23 +128,30 @@ class MainActivity : ComponentActivity() {
                                          DropdownMenuItem(
                                              onClick = {
                                                  searchStatus = bluetoothAdapter?.startDiscovery() == true
+                                                 isDropdownMenuOpen = false
                                              }
                                          ) {
                                              Text(text = "Start Search")
                                          }
-                                         DropdownMenuItem(onClick = { bluetoothAdapter?.cancelDiscovery(); searchStatus = false}) {
+                                         DropdownMenuItem(onClick = { bluetoothAdapter?.cancelDiscovery(); searchStatus = false; isDropdownMenuOpen = false}) {
                                              Text(text = "End Search")
                                          }
-                                         DropdownMenuItem(onClick = { vm.clear() }) {
+                                         DropdownMenuItem(onClick = { vm.clear(); isDropdownMenuOpen = false }) {
                                              Text(text = "Clear Results")
                                          }
-                                         DropdownMenuItem(onClick = { vm.readFromServer() }) {
+                                         DropdownMenuItem(onClick = { vm.readFromServer(); isDropdownMenuOpen = false }) {
                                              Text(text = "Read as Client")
                                          }
-                                         DropdownMenuItem(onClick = { vm.startServer() }) {
+                                         DropdownMenuItem(
+                                             onClick = {
+                                                 enableDiscoverableLauncher.launch(enableDiscoverableIntent)
+                                                 vm.startServer()
+                                                 isDropdownMenuOpen = false
+                                             }
+                                         ) {
                                              Text(text = "Start Server")
                                          }
-                                         DropdownMenuItem(onClick = { isDialogOpen = true }) {
+                                         DropdownMenuItem(onClick = { isDialogOpen = true ; isDropdownMenuOpen = false}) {
                                              Text(text = "Send Message as Server")
                                          }
                                      }
