@@ -6,37 +6,33 @@ import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.Handler
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Alignment.Companion.CenterHorizontally
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import com.example.bluetoothtest.ui.theme.BluetoothTestTheme
-import kotlinx.coroutines.flow.collectLatest
 
 class MainActivity : ComponentActivity() {
-    private val vm by viewModels<MainViewModel>()
+    private val normalVm by viewModels<NormalBluetoothViewModel>()
+    private val leBtVm by viewModels<NormalBluetoothViewModel>()
+
+    val bluetoothManager: BluetoothManager = getSystemService(BluetoothManager::class.java)
+    val bluetoothAdapter: BluetoothAdapter? = bluetoothManager.adapter
+    val bluetoothLeScanner = bluetoothAdapter?.bluetoothLeScanner
 
     // Create a BroadcastReceiver for ACTION_FOUND.
     private val receiver = object : BroadcastReceiver() {
@@ -51,7 +47,7 @@ class MainActivity : ComponentActivity() {
                     // object and its info from the Intent.
                     val device: BluetoothDevice? =
                         intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
-                    device?.let { vm.addDevice(it) }
+                    device?.let { normalVm.addDevice(it) }
                 }
             }
         }
@@ -60,9 +56,7 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterialApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val bluetoothManager: BluetoothManager = getSystemService(BluetoothManager::class.java)
-        val bluetoothAdapter: BluetoothAdapter? = bluetoothManager.adapter
-        bluetoothAdapter?.let { vm.registerAdapter(it)}
+        bluetoothAdapter?.let { normalVm.registerAdapter(it)}
         val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()){ map ->
             if(map.any { !it.value }) {
                 Toast.makeText(this, "Fehlende Berechtigungen", Toast.LENGTH_SHORT).show()
@@ -95,95 +89,25 @@ class MainActivity : ComponentActivity() {
 
         val filter = IntentFilter(BluetoothDevice.ACTION_FOUND)
         registerReceiver(receiver, filter)
+
         setContent {
             BluetoothTestTheme {
                 // A surface container using the 'background' color from the theme
-                var searchStatus by remember { mutableStateOf(false) }
-                var isDropdownMenuOpen by remember { mutableStateOf(false)}
-                var isDialogOpen by remember { mutableStateOf(false)}
-                val scaffoldState = rememberScaffoldState()
-
-                InputDialog(isOpen = isDialogOpen, title = "Input Text", isTwoLined = false, firstLabel = "Message", onDismissRequest = { isDialogOpen = false }){ a, _ ->
-                    vm.sendAsServer(a)
-                    isDialogOpen = false
-                }
-
-                LaunchedEffect(key1 = Unit) {
-                    vm.eventFlow.collectLatest { event ->
-                        when(event) {
-                            is MainViewModel.UiEvent.showSnackBar -> {
-                                scaffoldState.snackbarHostState.showSnackbar(event.message)
-                            }
-                        }
-                    }
-                }
-                Scaffold(
-                    modifier = Modifier.fillMaxSize(),
-                    scaffoldState = scaffoldState,
-                    topBar = {
-                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                 IconButton(onClick = { isDropdownMenuOpen = true }) {
-                                     Icon(Icons.Default.MoreVert, "")
-                                     DropdownMenu(expanded = isDropdownMenuOpen, onDismissRequest = { isDropdownMenuOpen = false }) {
-                                         DropdownMenuItem(
-                                             onClick = {
-                                                 searchStatus = bluetoothAdapter?.startDiscovery() == true
-                                                 isDropdownMenuOpen = false
-                                             }
-                                         ) {
-                                             Text(text = "Start Search")
-                                         }
-                                         DropdownMenuItem(onClick = { bluetoothAdapter?.cancelDiscovery(); searchStatus = false; isDropdownMenuOpen = false}) {
-                                             Text(text = "End Search")
-                                         }
-                                         DropdownMenuItem(onClick = { vm.clear(); isDropdownMenuOpen = false }) {
-                                             Text(text = "Clear Results")
-                                         }
-                                         DropdownMenuItem(onClick = { vm.readFromServer(); isDropdownMenuOpen = false }) {
-                                             Text(text = "Read as Client")
-                                         }
-                                         DropdownMenuItem(
-                                             onClick = {
-                                                 enableDiscoverableLauncher.launch(enableDiscoverableIntent)
-                                                 vm.startServer()
-                                                 isDropdownMenuOpen = false
-                                             }
-                                         ) {
-                                             Text(text = "Start Server")
-                                         }
-                                         DropdownMenuItem(onClick = { isDialogOpen = true ; isDropdownMenuOpen = false}) {
-                                             Text(text = "Send Message as Server")
-                                         }
-                                     }
-                                 }
-                             }
-                    },
-
-                ) {
-                    Column(Modifier.fillMaxSize()) {
-                        Text(text = "Read:" + vm.textState.value)
-                        LazyColumn(
-                            Modifier
-                                .fillMaxWidth()
-                                .weight(1f), horizontalAlignment = CenterHorizontally) {
-                            items(vm.state.value) { item ->
-                                Card(
-                                    onClick = {vm.connectAsClientTo(item)},
-                                    backgroundColor = MaterialTheme.colors.surface,
-                                    modifier = Modifier
-                                        .padding(5.dp)
-                                        .fillMaxWidth(0.7f),
-                                    elevation = 5.dp,
-                                    shape = CircleShape
-                                ) {
-                                    Column(horizontalAlignment = CenterHorizontally) {
-                                        Text(text = item.name ?: "null")
-                                        Text(text = item.address)
-                                    }
-                                }
-                            }
-                        }
-                    }
+                var isLeBt by remember{mutableStateOf(false)}
+                if(!isLeBt) {
+                    BluetoothTestScreen(
+                        vm = normalVm,
+                        startDiscovery = { bluetoothAdapter?.startDiscovery() == true },
+                        endDiscovery = { bluetoothAdapter?.cancelDiscovery() == true },
+                        enableDiscoverable = {enableDiscoverableLauncher.launch(enableDiscoverableIntent)}
+                    )
+                } else {
+                    BluetoothTestScreen(
+                        vm = leBtVm,
+                        startDiscovery = { bluetoothAdapter?.startDiscovery() == true },
+                        endDiscovery = { bluetoothAdapter?.cancelDiscovery() == true },
+                        enableDiscoverable = {enableDiscoverableLauncher.launch(enableDiscoverableIntent)}
+                    )
                 }
             }
         }
@@ -193,6 +117,38 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
 
         unregisterReceiver(receiver)
+    }
+
+    /*
+            Low Energy bluetooth Section
+         */
+    // Device scan callback.
+    private val leScanCallback: ScanCallback = object : ScanCallback() {
+        override fun onScanResult(callbackType: Int, result: ScanResult) {
+            super.onScanResult(callbackType, result)
+            leBtVm.addDevice(result.device)
+        }
+    }
+
+    private var scanning = false
+    private val handler = Handler()
+
+    // Stops scanning after 10 seconds.
+    private val SCAN_PERIOD: Long = 10000
+
+    @SuppressLint("MissingPermission")
+    private fun scanLeDevice() {
+        if (!scanning) { // Stops scanning after a pre-defined scan period.
+            handler.postDelayed({
+                scanning = false
+                bluetoothLeScanner?.stopScan(leScanCallback)
+            }, SCAN_PERIOD)
+            scanning = true
+            bluetoothLeScanner?.startScan(leScanCallback)
+        } else {
+            scanning = false
+            bluetoothLeScanner?.stopScan(leScanCallback)
+        }
     }
 }
 

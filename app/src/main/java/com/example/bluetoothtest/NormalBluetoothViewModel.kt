@@ -17,30 +17,30 @@ import java.io.IOException
 import java.util.*
 
 
-class MainViewModel : ViewModel() {
+class NormalBluetoothViewModel : BluetoothViewModel() {
     private lateinit var bluetoothAdapter: BluetoothAdapter
 
     private val _state = mutableStateOf<List<BluetoothDevice>>(emptyList())
-    val state : State<List<BluetoothDevice>> = _state
-
-    private val _textState = mutableStateOf("")
-    val textState : State<String> = _textState
+    override val state : State<List<BluetoothDevice>> = _state
 
     private val _eventFlow = MutableSharedFlow<UiEvent>()
-    val eventFlow = _eventFlow.asSharedFlow()
+    override val eventFlow = _eventFlow.asSharedFlow()
+
+    private val _textState = mutableStateOf("")
+    override val textState : State<String> = _textState
 
     private lateinit var clientSocket: BluetoothSocket
     private lateinit var serverSocket: BluetoothServerSocket
 
-    fun registerAdapter(adapter: BluetoothAdapter){
+    override fun registerAdapter(adapter: BluetoothAdapter){
         bluetoothAdapter = adapter
     }
 
-    fun addDevice(device: BluetoothDevice) {
+    override fun addDevice(device: BluetoothDevice) {
         _state.value = state.value.plus(device)
     }
 
-    fun clear() {
+    override fun clear() {
         _state.value = emptyList()
         viewModelScope.launch {
             _eventFlow.emit(UiEvent.showSnackBar("Cleared"))
@@ -48,7 +48,7 @@ class MainViewModel : ViewModel() {
     }
 
     @SuppressLint("MissingPermission")
-    fun connectAsClientTo(device: BluetoothDevice) {
+    override fun connectAsClientTo(device: BluetoothDevice) {
         clientSocket = device.createRfcommSocketToServiceRecord(UUID(1L, 2L))
         viewModelScope.launch(Dispatchers.IO) {
             clientSocket.connect()
@@ -58,7 +58,7 @@ class MainViewModel : ViewModel() {
     }
 
     @SuppressLint("MissingPermission")
-    fun startServer() {
+    override fun startServer() {
         serverSocket = bluetoothAdapter.listenUsingRfcommWithServiceRecord("tomtest", UUID(1L, 2L))
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -71,7 +71,7 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    fun readFromServer() {
+    override fun readFromServer() {
         viewModelScope.launch(Dispatchers.IO) {
             _eventFlow.emit(UiEvent.showSnackBar("Waiting for Message from Server"))
             try {
@@ -90,7 +90,7 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    fun sendAsServer(message: String){
+    override fun sendAsServer(message: String){
         viewModelScope.launch(Dispatchers.IO) {
             val outputStream = clientSocket.outputStream
             outputStream.write(message.toByteArray())
